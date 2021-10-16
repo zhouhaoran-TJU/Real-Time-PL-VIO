@@ -1,16 +1,7 @@
-/*******************************************************
- * Copyright (C) 2019, Aerial Robotics Group, Hong Kong University of Science and Technology
- * 
- * This file is part of VINS.
- * 
- * Licensed under the GNU General Public License v3.0;
- * you may not use this file except in compliance with the License.
- *******************************************************/
-
 #pragma once
 
 #include "../utility/utility.h"
-#include "../estimator/parameters.h"
+#include "../parameters.h"
 
 #include <ceres/ceres.h>
 using namespace Eigen;
@@ -71,11 +62,11 @@ class IntegrationBase
         //ROS_INFO("midpoint integration");
         Vector3d un_acc_0 = delta_q * (_acc_0 - linearized_ba);
         Vector3d un_gyr = 0.5 * (_gyr_0 + _gyr_1) - linearized_bg;
-        result_delta_q = delta_q * Quaterniond(1, un_gyr(0) * _dt / 2, un_gyr(1) * _dt / 2, un_gyr(2) * _dt / 2);
+        result_delta_q = delta_q * Quaterniond(1, un_gyr(0) * _dt / 2, un_gyr(1) * _dt / 2, un_gyr(2) * _dt / 2);   // equation 42
         Vector3d un_acc_1 = result_delta_q * (_acc_1 - linearized_ba);
-        Vector3d un_acc = 0.5 * (un_acc_0 + un_acc_1);
-        result_delta_p = delta_p + delta_v * _dt + 0.5 * un_acc * _dt * _dt;
-        result_delta_v = delta_v + un_acc * _dt;
+        Vector3d un_acc = 0.5 * (un_acc_0 + un_acc_1);                          // eq: 43
+        result_delta_p = delta_p + delta_v * _dt + 0.5 * un_acc * _dt * _dt;    // eq: 44
+        result_delta_v = delta_v + un_acc * _dt;                                // eq: 45
         result_linearized_ba = linearized_ba;
         result_linearized_bg = linearized_bg;         
 
@@ -97,19 +88,24 @@ class IntegrationBase
                 -a_1_x(1), a_1_x(0), 0;
 
             MatrixXd F = MatrixXd::Zero(15, 15);
-            F.block<3, 3>(0, 0) = Matrix3d::Identity();
+            
+            //  row 0-3 : \partial position 
+            F.block<3, 3>(0, 0) = Matrix3d::Identity();                   // dp_dp
             F.block<3, 3>(0, 3) = -0.25 * delta_q.toRotationMatrix() * R_a_0_x * _dt * _dt + 
                                   -0.25 * result_delta_q.toRotationMatrix() * R_a_1_x * (Matrix3d::Identity() - R_w_x * _dt) * _dt * _dt;
-            F.block<3, 3>(0, 6) = MatrixXd::Identity(3,3) * _dt;
-            F.block<3, 3>(0, 9) = -0.25 * (delta_q.toRotationMatrix() + result_delta_q.toRotationMatrix()) * _dt * _dt;
-            F.block<3, 3>(0, 12) = -0.25 * result_delta_q.toRotationMatrix() * R_a_1_x * _dt * _dt * -_dt;
-            F.block<3, 3>(3, 3) = Matrix3d::Identity() - R_w_x * _dt;
-            F.block<3, 3>(3, 12) = -1.0 * MatrixXd::Identity(3,3) * _dt;
+            F.block<3, 3>(0, 6) = MatrixXd::Identity(3,3) * _dt;          // dp_dv
+            F.block<3, 3>(0, 9) = -0.25 * (delta_q.toRotationMatrix() + result_delta_q.toRotationMatrix()) * _dt * _dt;  // dp_dba
+            F.block<3, 3>(0, 12) = -0.25 * result_delta_q.toRotationMatrix() * R_a_1_x * _dt * _dt * -_dt;    // dp_dbg
+
+            F.block<3, 3>(3, 3) = Matrix3d::Identity() - R_w_x * _dt;     // dtheta_dtheta
+            F.block<3, 3>(3, 12) = -1.0 * MatrixXd::Identity(3,3) * _dt;  // dtheta_dbg
+
             F.block<3, 3>(6, 3) = -0.5 * delta_q.toRotationMatrix() * R_a_0_x * _dt + 
-                                  -0.5 * result_delta_q.toRotationMatrix() * R_a_1_x * (Matrix3d::Identity() - R_w_x * _dt) * _dt;
-            F.block<3, 3>(6, 6) = Matrix3d::Identity();
-            F.block<3, 3>(6, 9) = -0.5 * (delta_q.toRotationMatrix() + result_delta_q.toRotationMatrix()) * _dt;
-            F.block<3, 3>(6, 12) = -0.5 * result_delta_q.toRotationMatrix() * R_a_1_x * _dt * -_dt;
+                                  -0.5 * result_delta_q.toRotationMatrix() * R_a_1_x * (Matrix3d::Identity() - R_w_x * _dt) * _dt;  // dv_dtheta
+            F.block<3, 3>(6, 6) = Matrix3d::Identity();                   // dv_dv
+            F.block<3, 3>(6, 9) = -0.5 * (delta_q.toRotationMatrix() + result_delta_q.toRotationMatrix()) * _dt;    // dv_dba
+            F.block<3, 3>(6, 12) = -0.5 * result_delta_q.toRotationMatrix() * R_a_1_x * _dt * -_dt;                 // dv_dbg
+            
             F.block<3, 3>(9, 9) = Matrix3d::Identity();
             F.block<3, 3>(12, 12) = Matrix3d::Identity();
             //cout<<"A"<<endl<<A<<endl;
@@ -127,7 +123,42 @@ class IntegrationBase
             V.block<3, 3>(6, 9) =  V.block<3, 3>(6, 3);
             V.block<3, 3>(9, 12) = MatrixXd::Identity(3,3) * _dt;
             V.block<3, 3>(12, 15) = MatrixXd::Identity(3,3) * _dt;
+/*
+            //  row 0-3 : \partial position 
+            F.block<3, 3>(0, 0) = Matrix3d::Identity();                   // dp_dp
+            F.block<3, 3>(0, 3) = -0.25 * delta_q.toRotationMatrix() * R_a_0_x * _dt * _dt + 
+                                  -0.25 * result_delta_q.toRotationMatrix() * R_a_1_x * (Matrix3d::Identity() - R_w_x * _dt) * _dt * _dt;
+            F.block<3, 3>(0, 6) = MatrixXd::Identity(3,3) * _dt;          // dp_dv
+            F.block<3, 3>(0, 9) = -0.25 * (delta_q.toRotationMatrix() + result_delta_q.toRotationMatrix()) * _dt * _dt;  // dp_dba
+            F.block<3, 3>(0, 12) = -0.25 * result_delta_q.toRotationMatrix() * R_a_1_x * (Matrix3d::Identity() - R_w_x * _dt) * _dt * _dt * -_dt;    // dp_dbg
 
+            F.block<3, 3>(3, 3) = Matrix3d::Identity() - R_w_x * _dt;     // dtheta_dtheta
+            F.block<3, 3>(3, 12) = -1.0 * MatrixXd::Identity(3,3) * _dt;  // dtheta_dbg           // fix code
+
+            F.block<3, 3>(6, 3) = -0.5 * delta_q.toRotationMatrix() * R_a_0_x * _dt + 
+                                  -0.5 * result_delta_q.toRotationMatrix() * R_a_1_x * (Matrix3d::Identity() - R_w_x * _dt) * _dt;  // dv_dtheta
+            F.block<3, 3>(6, 6) = Matrix3d::Identity();                   // dv_dv
+            F.block<3, 3>(6, 9) = -0.5 * (delta_q.toRotationMatrix() + result_delta_q.toRotationMatrix()) * _dt;    // dv_dba
+            F.block<3, 3>(6, 12) = -0.5 * result_delta_q.toRotationMatrix() * R_a_1_x * (Matrix3d::Identity() - R_w_x * _dt) * _dt * -_dt;     // dv_dbg
+            
+            F.block<3, 3>(9, 9) = Matrix3d::Identity();
+            F.block<3, 3>(12, 12) = Matrix3d::Identity();
+            //cout<<"A"<<endl<<A<<endl;
+
+            MatrixXd V = MatrixXd::Zero(15,18);
+            V.block<3, 3>(0, 0) =  0.25 * delta_q.toRotationMatrix() * _dt * _dt;
+            V.block<3, 3>(0, 3) =  0.25 * -result_delta_q.toRotationMatrix() * R_a_1_x* (Matrix3d::Identity() - R_w_x * _dt) * _dt * _dt * 0.5 * _dt;
+            V.block<3, 3>(0, 6) =  0.25 * result_delta_q.toRotationMatrix() * _dt * _dt;
+            V.block<3, 3>(0, 9) =  V.block<3, 3>(0, 3);
+            V.block<3, 3>(3, 3) =  0.5 * MatrixXd::Identity(3,3) * _dt;
+            V.block<3, 3>(3, 9) =  0.5 * MatrixXd::Identity(3,3) * _dt;
+            V.block<3, 3>(6, 0) =  0.5 * delta_q.toRotationMatrix() * _dt;
+            V.block<3, 3>(6, 3) =  0.5 * -result_delta_q.toRotationMatrix() * R_a_1_x *(Matrix3d::Identity() - R_w_x * _dt) * _dt * 0.5 * _dt;
+            V.block<3, 3>(6, 6) =  0.5 * result_delta_q.toRotationMatrix() * _dt;
+            V.block<3, 3>(6, 9) =  V.block<3, 3>(6, 3);
+            V.block<3, 3>(9, 12) = MatrixXd::Identity(3,3) * _dt;
+            V.block<3, 3>(12, 15) = MatrixXd::Identity(3,3) * _dt;
+*/
             //step_jacobian = F;
             //step_V = V;
             jacobian = F * jacobian;

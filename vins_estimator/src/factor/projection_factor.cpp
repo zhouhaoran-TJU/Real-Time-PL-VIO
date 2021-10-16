@@ -1,12 +1,3 @@
-/*******************************************************
- * Copyright (C) 2019, Aerial Robotics Group, Hong Kong University of Science and Technology
- * 
- * This file is part of VINS.
- * 
- * Licensed under the GNU General Public License v3.0;
- * you may not use this file except in compliance with the License.
- *******************************************************/
-
 #include "projection_factor.h"
 
 Eigen::Matrix2d ProjectionFactor::sqrt_info;
@@ -27,6 +18,11 @@ ProjectionFactor::ProjectionFactor(const Eigen::Vector3d &_pts_i, const Eigen::V
 #endif
 };
 
+/*
+  parameters[0]:  Twi
+  parameters[1]:  Twj
+  parameters[2]:  Tbc
+*/
 bool ProjectionFactor::Evaluate(double const *const *parameters, double *residuals, double **jacobians) const
 {
     TicToc tic_toc;
@@ -49,10 +45,10 @@ bool ProjectionFactor::Evaluate(double const *const *parameters, double *residua
     Eigen::Map<Eigen::Vector2d> residual(residuals);
 
 #ifdef UNIT_SPHERE_ERROR 
-    residual =  tangent_base * (pts_camera_j.normalized() - pts_j.normalized());
+    residual =  tangent_base * (pts_camera_j.normalized() - pts_j.normalized());  // 误差 = 两个方向向量之间的误差 投影到 正切平面
 #else
     double dep_j = pts_camera_j.z();
-    residual = (pts_camera_j / dep_j).head<2>() - pts_j.head<2>();
+    residual = (pts_camera_j / dep_j).head<2>() - pts_j.head<2>();      // 误差 = 坐标重投影误差
 #endif
 
     residual = sqrt_info * residual;
@@ -85,11 +81,11 @@ bool ProjectionFactor::Evaluate(double const *const *parameters, double *residua
             Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> jacobian_pose_i(jacobians[0]);
 
             Eigen::Matrix<double, 3, 6> jaco_i;
-            jaco_i.leftCols<3>() = ric.transpose() * Rj.transpose();
-            jaco_i.rightCols<3>() = ric.transpose() * Rj.transpose() * Ri * -Utility::skewSymmetric(pts_imu_i);
+            jaco_i.leftCols<3>() = ric.transpose() * Rj.transpose();                                             // derr_dpi
+            jaco_i.rightCols<3>() = ric.transpose() * Rj.transpose() * Ri * -Utility::skewSymmetric(pts_imu_i);  // derr_dthetai
 
             jacobian_pose_i.leftCols<6>() = reduce * jaco_i;
-            jacobian_pose_i.rightCols<1>().setZero();
+            jacobian_pose_i.rightCols<1>().setZero();            //最后一列设成0
         }
 
         if (jacobians[1])
@@ -169,14 +165,11 @@ void ProjectionFactor::check(double **parameters)
     Eigen::Vector3d pts_imu_j = Qj.inverse() * (pts_w - Pj);
     Eigen::Vector3d pts_camera_j = qic.inverse() * (pts_imu_j - tic);
 
+    double dep_j = pts_camera_j.z();
 
     Eigen::Vector2d residual;
-#ifdef UNIT_SPHERE_ERROR 
-    residual =  tangent_base * (pts_camera_j.normalized() - pts_j.normalized());
-#else
-    double dep_j = pts_camera_j.z();
     residual = (pts_camera_j / dep_j).head<2>() - pts_j.head<2>();
-#endif
+
     residual = sqrt_info * residual;
 
     puts("num");
@@ -220,14 +213,12 @@ void ProjectionFactor::check(double **parameters)
         Eigen::Vector3d pts_imu_j = Qj.inverse() * (pts_w - Pj);
         Eigen::Vector3d pts_camera_j = qic.inverse() * (pts_imu_j - tic);
 
-        Eigen::Vector2d tmp_residual;
-#ifdef UNIT_SPHERE_ERROR 
-        tmp_residual =  tangent_base * (pts_camera_j.normalized() - pts_j.normalized());
-#else
         double dep_j = pts_camera_j.z();
+
+        Eigen::Vector2d tmp_residual;
         tmp_residual = (pts_camera_j / dep_j).head<2>() - pts_j.head<2>();
-#endif
         tmp_residual = sqrt_info * tmp_residual;
+
         num_jacobian.col(k) = (tmp_residual - residual) / eps;
     }
     std::cout << num_jacobian << std::endl;

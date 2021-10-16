@@ -1,14 +1,3 @@
-/*******************************************************
- * Copyright (C) 2019, Aerial Robotics Group, Hong Kong University of Science and Technology
- * 
- * This file is part of VINS.
- * 
- * Licensed under the GNU General Public License v3.0;
- * you may not use this file except in compliance with the License.
- *
- * Author: Qin Tong (qintonguav@gmail.com)
- *******************************************************/
-
 #include "solve_5pts.h"
 
 
@@ -211,9 +200,10 @@ bool MotionEstimator::solveRelativeRT(const vector<pair<Vector3d, Vector3d>> &co
             ll.push_back(cv::Point2f(corres[i].first(0), corres[i].first(1)));
             rr.push_back(cv::Point2f(corres[i].second(0), corres[i].second(1)));
         }
+        //std::cout<<ll.size() <<" "<<rr.size() <<"\n";
         cv::Mat mask;
         cv::Mat E = cv::findFundamentalMat(ll, rr, cv::FM_RANSAC, 0.3 / 460, 0.99, mask);
-        cv::Mat cameraMatrix = (cv::Mat_<double>(3, 3) << 1, 0, 0, 0, 1, 0, 0, 0, 1);
+        cv::Mat cameraMatrix = (cv::Mat_<double>(3, 3) << 1., 0., 0., 0., 1., 0., 0., 0., 1.);
         cv::Mat rot, trans;
         int inlier_cnt = cv::recoverPose(E, ll, rr, cameraMatrix, rot, trans, mask);
         //cout << "inlier_cnt " << inlier_cnt << endl;
