@@ -1,7 +1,7 @@
 # Real-Time-PL-VIO
 ##  Tightly-Coupled Real Time Monocular Visual–Inertial Odometry Using Point and Line Features
 
-Based on [PL-VIO](https://github.com/HeYijia/PL-VIO), Real-Time-PL-VIO uses [EDlines](https://github.com/CihanTopal/ED_Lib) to extracte line feature, and Optical flow to track, Helmholtz principle to check tracking result. Real-Time-PL-VIO can achieve a real time performance with CPU.
+Based on [PL-VIO](https://github.com/HeYijia/PL-VIO), Real-Time-PL-VIO uses [EDlines](https://github.com/CihanTopal/ED_Lib) to extracte line features, and Optical flow to track them, Helmholtz principle to check tracking results. Real-Time-PL-VIO can achieve a real time performance with CPU.
 
 This code runs on **Linux**, and is fully integrated with **ROS**. 
 
